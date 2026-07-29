@@ -520,14 +520,44 @@
   setInterval(renderCountdown, 1000);
 
   // Form submit → thank you page
-  document.getElementById('register').addEventListener('submit', function(e){
-    e.preventDefault();
-    const data = new FormData(this);
-    const name = (data.get('name')||'').toString().trim();
-    try { sessionStorage.setItem('ts_name', name); } catch(_){}
-    const qs = name ? ('?name=' + encodeURIComponent(name)) : '';
-    window.location.href = 'thankyou.html' + qs;
-  });
+  document.getElementById("register").addEventListener("submit", async function (e) {
+  e.preventDefault();
+
+  const form = e.target;
+
+  const payload = {
+    name: form.name.value.trim(),
+    email: form.email.value.trim(),
+    phone: form.phone.value.trim(),
+    profession: form.profession.value,
+  };
+
+  try {
+    const response = await fetch("/api/submit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await response.json();
+
+    if (!result.success) {
+      alert(result.message || "Something went wrong.");
+      return;
+    }
+
+    sessionStorage.setItem("ts_name", payload.name);
+
+    window.location.href =
+      "thankyou.html?name=" + encodeURIComponent(payload.name);
+
+  } catch (err) {
+    console.error(err);
+    alert("Unable to submit form. Please try again.");
+  }
+});
 
   lucide.createIcons();
 </script>
