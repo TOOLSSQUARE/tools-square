@@ -26,7 +26,16 @@ export default async function handler(req, res) {
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[
-          new Date().toLocaleString("en-IN"),
+          new Date().toLocaleString("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+})
           name,
           email,
           phone,
