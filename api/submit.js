@@ -1,5 +1,5 @@
 import { getSheet } from "../lib/sheets.js";
-
+import crypto from "crypto";
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -21,6 +21,41 @@ export default async function handler(req, res) {
     const sheets = await getSheet();
 
     await sheets.spreadsheets.values.append({
+      const hashedEmail = crypto
+  .createHash("sha256")
+  .update(email.trim().toLowerCase())
+  .digest("hex");
+
+const hashedPhone = crypto
+  .createHash("sha256")
+  .update(phone.replace(/\D/g, ""))
+  .digest("hex");
+
+await fetch(
+  `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      data: [
+        {
+          event_name: "Lead",
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: "website",
+          user_data: {
+            em: [hashedEmail],
+            ph: [hashedPhone],
+            client_ip_address:
+              req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+            client_user_agent: req.headers["user-agent"],
+          },
+        },
+      ],
+    }),
+  }
+);
       spreadsheetId: process.env.GOOGLE_SHEET_ID,
       range: "Sheet1!A:F",
       valueInputOption: "USER_ENTERED",
