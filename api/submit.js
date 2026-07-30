@@ -84,6 +84,15 @@ const metaResponse = await fetch(
 
 const metaResult = await metaResponse.json();
 console.log("Meta CAPI Response:", metaResult);
+
+if (!metaResponse.ok) {
+  console.error("Meta API Error:", metaResult);
+}
+
+return res.status(200).json({
+  success: true,
+  message: "Lead Saved Successfully",
+});
 return res.status(200).json({
   success: true,
   message: "Lead Saved Successfully",
