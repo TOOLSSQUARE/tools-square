@@ -20,8 +20,32 @@ export default async function handler(req, res) {
 
     const sheets = await getSheet();
 
-    await sheets.spreadsheets.values.append({
-      const hashedEmail = crypto
+await sheets.spreadsheets.values.append({
+  spreadsheetId: process.env.GOOGLE_SHEET_ID,
+  range: "Sheet1!A:F",
+  valueInputOption: "USER_ENTERED",
+  requestBody: {
+    values: [[
+      new Date().toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }),
+      name,
+      email,
+      phone,
+      profession || "",
+      "Website"
+    ]]
+  }
+});
+
+const hashedEmail = crypto
   .createHash("sha256")
   .update(email.trim().toLowerCase())
   .digest("hex");
@@ -56,41 +80,3 @@ await fetch(
     }),
   }
 );
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: "Sheet1!A:F",
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [[
-          new Date().toLocaleString("en-IN", {
-  timeZone: "Asia/Kolkata",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-}),
-          name,
-          email,
-          phone,
-          profession || "",
-          "Website"
-        ]]
-      }
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Lead Saved Successfully",
-    });
-
-  } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
-  }
-}
