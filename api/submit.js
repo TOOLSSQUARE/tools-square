@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { name, email, phone, profession } = req.body;
+    const { name, email, phone, profession, eventId } = req.body;
 
     if (!name || !email || !phone) {
       return res.status(400).json({
@@ -66,6 +66,7 @@ const metaResponse = await fetch(
       data: [
         {
           event_name: "Lead",
+          event_id: eventId,
           event_time: Math.floor(Date.now() / 1000),
           action_source: "website",
           user_data: {
