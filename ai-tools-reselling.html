@@ -570,15 +570,19 @@ src="https://www.facebook.com/tr?id=4550576318557482&ev=PageView&noscript=1"/>
 
     const result = await response.json();
 
-    if (!result.success) {
-      alert(result.message || "Something went wrong.");
-      return;
-    }
+if (!result.success) {
+  alert(result.message || "Something went wrong.");
+  return;
+}
 
-    sessionStorage.setItem("ts_name", payload.name);
+if (typeof fbq !== "undefined") {
+  fbq("track", "Lead");
+}
 
-    window.location.href =
-      "thankyou.html?name=" + encodeURIComponent(payload.name);
+sessionStorage.setItem("ts_name", payload.name);
+
+window.location.href =
+  "thankyou.html?name=" + encodeURIComponent(payload.name);
 
   } catch (err) {
     console.error(err);
