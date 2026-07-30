@@ -77,7 +77,6 @@ const metaResponse = await fetch(
           },
         },
       ],
-      test_event_code: "TEST31330"
     }),
   }
 );
