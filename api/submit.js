@@ -55,7 +55,7 @@ const hashedPhone = crypto
   .update(phone.replace(/\D/g, ""))
   .digest("hex");
 
-await fetch(
+const metaResponse = await fetch(
   `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
   {
     method: "POST",
@@ -77,16 +77,20 @@ await fetch(
           },
         },
       ],
+      test_event_code: "TEST31330"
     }),
   }
 );
+
+const metaResult = await metaResponse.json();
+console.log("Meta CAPI Response:", metaResult);
 return res.status(200).json({
   success: true,
   message: "Lead Saved Successfully",
 });
 
 } catch (error) {
-  console.error(error);
+  console.error("Submit API Error:", error);
 
   return res.status(500).json({
     success: false,
