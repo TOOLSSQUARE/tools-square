@@ -9,8 +9,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { name, email, phone, profession, eventId, fbp, fbc } = req.body;s
-
+const { name, email, phone, profession, eventId, fbp, fbc } = req.body;
     if (!name || !email || !phone) {
       return res.status(400).json({
         success: false,
