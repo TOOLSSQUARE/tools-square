@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { name, email, phone, profession, eventId } = req.body;
+    const { name, email, phone, profession, eventId, fbp, fbc } = req.body;s
 
     if (!name || !email || !phone) {
       return res.status(400).json({
@@ -70,12 +70,16 @@ const metaResponse = await fetch(
           event_time: Math.floor(Date.now() / 1000),
           action_source: "website",
           user_data: {
-            em: [hashedEmail],
-            ph: [hashedPhone],
-            client_ip_address:
-              req.headers["x-forwarded-for"] || req.socket.remoteAddress,
-            client_user_agent: req.headers["user-agent"],
-          },
+  em: [hashedEmail],
+  ph: [hashedPhone],
+
+  fbp: fbp,
+  fbc: fbc,
+
+  client_ip_address:
+    req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+  client_user_agent: req.headers["user-agent"],
+},
         },
       ],
     }),
