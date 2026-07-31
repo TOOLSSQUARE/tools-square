@@ -96,10 +96,7 @@ return res.status(200).json({
   success: true,
   message: "Lead Saved Successfully",
 });
-return res.status(200).json({
-  success: true,
-  message: "Lead Saved Successfully",
-});
+
 
 } catch (error) {
   console.error("Submit API Error:", error);
