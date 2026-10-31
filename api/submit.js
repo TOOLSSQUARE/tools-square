@@ -1,4 +1,3 @@
-```javascript
 import { getSheet } from "../lib/sheets.js";
 import crypto from "crypto";
 
@@ -133,7 +132,7 @@ export default async function handler(req, res) {
           userData.fbc = fbc;
         }
 
-       ```javascript
+       javascript
 const metaUrl =
   `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`;
 
@@ -157,7 +156,6 @@ const metaResponse = await fetch(metaUrl, {
     ],
   }),
 });
-```
 
         const metaResult = await metaResponse.json();
 
