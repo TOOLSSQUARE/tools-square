@@ -109,28 +109,44 @@ export default async function handler(req, res) {
         if (fbp) userData.fbp = fbp;
         if (fbc) userData.fbc = fbc;
 
-        const metaResponse = await fetch(
-          `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              data: [
-                {
-                  event_name: "Lead",
-                  event_id: eventId || crypto.randomUUID(),
-                  event_time: Math.floor(Date.now() / 1000),
-                  action_source: "website",
-                  event_source_url:
-                    req.headers.referer || "https://tools-square.in/ai-tools-reselling.html",
-                  user_data: userData,
-                },
-              ],
-            }),
-          }
-        );
+        ```javascript
+const metaUrl = `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`;
+
+const metaResponse = await fetch(metaUrl, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    data: [
+      {
+        event_name: "Lead",
+        event_id: eventId || crypto.randomUUID(),
+        event_time: Math.floor(Date.now() / 1000),
+        action_source: "website",
+        user_data: {
+          em: [hashedEmail],
+          ph: [hashedPhone],
+          ...(fbp ? { fbp } : {}),
+          ...(fbc ? { fbc } : {}),
+          client_ip_address: (
+            req.headers["x-forwarded-for"] || req.socket.remoteAddress || ""
+          ).split(",")[0].trim(),
+          client_user_agent: req.headers["user-agent"] || "",
+        },
+      },
+    ],
+  }),
+});
+
+const metaResult = await metaResponse.json();
+
+console.log("Meta CAPI Response:", metaResult);
+
+if (!metaResponse.ok) {
+  console.error("Meta API Error:", metaResult);
+}
+```
 
         const metaResult = await metaResponse.json();
 
