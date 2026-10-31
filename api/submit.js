@@ -196,4 +196,3 @@ const metaResponse = await fetch(metaUrl, {
     });
   }
 }
-```
