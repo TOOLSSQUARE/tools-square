@@ -1,6 +1,9 @@
+```javascript
 import { getSheet } from "../lib/sheets.js";
 import crypto from "crypto";
+
 export default async function handler(req, res) {
+  // Only allow POST requests
   if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
@@ -9,7 +12,17 @@ export default async function handler(req, res) {
   }
 
   try {
-const { name, email, phone, profession, eventId, fbp, fbc } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      profession,
+      eventId,
+      fbp,
+      fbc,
+    } = req.body || {};
+
+    // Validate required fields
     if (!name || !email || !phone) {
       return res.status(400).json({
         success: false,
@@ -17,93 +30,146 @@ const { name, email, phone, profession, eventId, fbp, fbc } = req.body;
       });
     }
 
+    // Check Google Sheets environment variables
+    if (
+      !process.env.GOOGLE_SHEET_ID ||
+      !process.env.GOOGLE_PROJECT_ID ||
+      !process.env.GOOGLE_PRIVATE_KEY ||
+      !process.env.GOOGLE_CLIENT_EMAIL
+    ) {
+      console.error("Google Sheets configuration is incomplete.");
+
+      return res.status(500).json({
+        success: false,
+        message: "Google Sheets configuration is incomplete.",
+      });
+    }
+
+    // Connect to Google Sheets
     const sheets = await getSheet();
 
-await sheets.spreadsheets.values.append({
-  spreadsheetId: process.env.GOOGLE_SHEET_ID,
-  range: "Sheet1!A:F",
-  valueInputOption: "USER_ENTERED",
-  requestBody: {
-    values: [[
-      new Date().toLocaleString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }),
-      name,
-      email,
-      phone,
-      profession || "",
-      "Website"
-    ]]
+    // Save registration data to Google Sheets
+    const sheetResponse = await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: "Sheet1!A:F",
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: {
+        values: [
+          [
+            new Date().toLocaleString("en-IN", {
+              timeZone: "Asia/Kolkata",
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false,
+            }),
+            name,
+            email,
+            phone,
+            profession || "",
+            "Website",
+          ],
+        ],
+      },
+    });
+
+    // Log Google Sheets save result
+    console.log("Google Sheets Save Success:", {
+      updatedRange: sheetResponse.data.updates?.updatedRange,
+      updatedRows: sheetResponse.data.updates?.updatedRows,
+    });
+
+    // Hash email and phone for Meta Conversions API
+    const hashedEmail = crypto
+      .createHash("sha256")
+      .update(String(email).trim().toLowerCase())
+      .digest("hex");
+
+    const hashedPhone = crypto
+      .createHash("sha256")
+      .update(String(phone).replace(/\D/g, ""))
+      .digest("hex");
+
+    // Send Lead event to Meta Conversions API if configured
+    if (
+      process.env.META_PIXEL_ID &&
+      process.env.META_ACCESS_TOKEN
+    ) {
+      try {
+        const metaResponse = await fetch(
+          `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              data: [
+                {
+                  event_name: "Lead",
+                  event_id: eventId || crypto.randomUUID(),
+                  event_time: Math.floor(Date.now() / 1000),
+                  action_source: "website",
+                  user_data: {
+                    em: [hashedEmail],
+                    ph: [hashedPhone],
+                    ...(fbp ? { fbp } : {}),
+                    ...(fbc ? { fbc } : {}),
+                    client_ip_address: (
+                      req.headers["x-forwarded-for"] || ""
+                    )
+                      .split(",")[0]
+                      .trim() || req.socket?.remoteAddress,
+                    client_user_agent: req.headers["user-agent"],
+                  },
+                },
+              ],
+            }),
+          }
+        );
+
+        const metaResult = await metaResponse.json();
+
+        console.log("Meta CAPI Response:", {
+          status: metaResponse.status,
+          events_received: metaResult.events_received,
+          messages: metaResult.messages,
+        });
+
+        if (!metaResponse.ok) {
+          console.error("Meta API Error:", metaResult);
+        }
+      } catch (metaError) {
+        // Meta errors should not undo a successful Google Sheets save
+        console.error("Meta CAPI Error:", metaError.message);
+      }
+    } else {
+      console.warn(
+        "Meta CAPI skipped: META_PIXEL_ID or META_ACCESS_TOKEN is missing."
+      );
+    }
+
+    // Registration successfully saved to Google Sheets
+    return res.status(200).json({
+      success: true,
+      message: "Lead Saved Successfully",
+    });
+  } catch (error) {
+    console.error("Submit API Error:", {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      details: error.response?.data?.error?.message,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to save registration. Please try again.",
+    });
   }
-});
-
-const hashedEmail = crypto
-  .createHash("sha256")
-  .update(email.trim().toLowerCase())
-  .digest("hex");
-
-const hashedPhone = crypto
-  .createHash("sha256")
-  .update(phone.replace(/\D/g, ""))
-  .digest("hex");
-
-const metaResponse = await fetch(
-  `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      data: [
-        {
-          event_name: "Lead",
-          event_id: eventId,
-          event_time: Math.floor(Date.now() / 1000),
-          action_source: "website",
-          user_data: {
-  em: [hashedEmail],
-  ph: [hashedPhone],
-
-  fbp: fbp,
-  fbc: fbc,
-
-  client_ip_address:
-    req.headers["x-forwarded-for"] || req.socket.remoteAddress,
-  client_user_agent: req.headers["user-agent"],
-},
-        },
-      ],
-    }),
-  }
-);
-
-const metaResult = await metaResponse.json();
-console.log("Meta CAPI Response:", metaResult);
-
-if (!metaResponse.ok) {
-  console.error("Meta API Error:", metaResult);
 }
-
-return res.status(200).json({
-  success: true,
-  message: "Lead Saved Successfully",
-});
-
-
-} catch (error) {
-  console.error("Submit API Error:", error);
-
-  return res.status(500).json({
-    success: false,
-    message: "Server Error",
-  });
-}
-}
+```
