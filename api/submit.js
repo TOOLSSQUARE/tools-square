@@ -100,37 +100,19 @@ export default async function handler(req, res) {
       process.env.META_ACCESS_TOKEN
     ) {
       try {
-        const metaResponse = await fetch(
-          `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              data: [
-                {
-                  event_name: "Lead",
-                  event_id: eventId || crypto.randomUUID(),
-                  event_time: Math.floor(Date.now() / 1000),
-                  action_source: "website",
-                  user_data: {
-                    em: [hashedEmail],
-                    ph: [hashedPhone],
-                    ...(fbp ? { fbp } : {}),
-                    ...(fbc ? { fbc } : {}),
-                    client_ip_address: (
-                      req.headers["x-forwarded-for"] || ""
-                    )
-                      .split(",")[0]
-                      .trim() || req.socket?.remoteAddress,
-                    client_user_agent: req.headers["user-agent"],
-                  },
-                },
-              ],
-            }),
-          }
-        );
+       ```javascript
+const metaResponse = await fetch(
+  `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      // Keep your existing data object here.
+    }),
+  }
+);
 
         const metaResult = await metaResponse.json();
 
