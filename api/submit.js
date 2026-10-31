@@ -131,7 +131,8 @@ export default async function handler(req, res) {
         if (fbc) {
           userData.fbc = fbc;
         }
-        
+
+       javascript
 const metaUrl =
   `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`;
 
