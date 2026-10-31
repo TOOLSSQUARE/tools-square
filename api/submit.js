@@ -3,7 +3,6 @@ import { getSheet } from "../lib/sheets.js";
 import crypto from "crypto";
 
 export default async function handler(req, res) {
-  // Only allow POST requests
   if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
@@ -22,7 +21,7 @@ export default async function handler(req, res) {
       fbc,
     } = req.body || {};
 
-    // Validate required fields
+    // Validate registration details
     if (!name || !email || !phone) {
       return res.status(400).json({
         success: false,
@@ -31,13 +30,22 @@ export default async function handler(req, res) {
     }
 
     // Check Google Sheets configuration
-    if (
-      !process.env.GOOGLE_SHEET_ID ||
-      !process.env.GOOGLE_PROJECT_ID ||
-      !process.env.GOOGLE_PRIVATE_KEY ||
-      !process.env.GOOGLE_CLIENT_EMAIL
-    ) {
-      console.error("Google Sheets configuration is incomplete.");
+    const requiredVariables = [
+      "GOOGLE_SHEET_ID",
+      "GOOGLE_PROJECT_ID",
+      "GOOGLE_PRIVATE_KEY",
+      "GOOGLE_CLIENT_EMAIL",
+    ];
+
+    const missingVariables = requiredVariables.filter(
+      (key) => !process.env[key]
+    );
+
+    if (missingVariables.length > 0) {
+      console.error(
+        "Missing Google Sheets environment variables:",
+        missingVariables
+      );
 
       return res.status(500).json({
         success: false,
@@ -67,10 +75,10 @@ export default async function handler(req, res) {
               second: "2-digit",
               hour12: false,
             }),
-            name,
-            email,
-            phone,
-            profession || "",
+            String(name).trim(),
+            String(email).trim(),
+            String(phone).trim(),
+            profession ? String(profession).trim() : "",
             "Website",
           ],
         ],
@@ -82,71 +90,74 @@ export default async function handler(req, res) {
       updatedRows: sheetResponse.data.updates?.updatedRows,
     });
 
-    // Send Meta Conversions API event if configured
-    if (process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
+    // Send Meta Conversions API event
+    // A Meta error will not undo the successful Sheets save.
+    if (
+      process.env.META_PIXEL_ID &&
+      process.env.META_ACCESS_TOKEN
+    ) {
       try {
+        const hashedEmail = crypto
+          .createHash("sha256")
+          .update(String(email).trim().toLowerCase())
+          .digest("hex");
+
+        const normalizedPhone = String(phone).replace(/\D/g, "");
+
+        const hashedPhone = crypto
+          .createHash("sha256")
+          .update(normalizedPhone)
+          .digest("hex");
+
         const userData = {
-          em: [
-            crypto
-              .createHash("sha256")
-              .update(String(email).trim().toLowerCase())
-              .digest("hex"),
-          ],
-          ph: [
-            crypto
-              .createHash("sha256")
-              .update(String(phone).replace(/\D/g, ""))
-              .digest("hex"),
-          ],
-          client_ip_address: String(
-            req.headers["x-forwarded-for"] ||
-              req.socket?.remoteAddress ||
-              ""
-          ).split(",")[0].trim(),
+          em: [hashedEmail],
+          ph: [hashedPhone],
           client_user_agent: req.headers["user-agent"] || "",
         };
 
-        if (fbp) userData.fbp = fbp;
-        if (fbc) userData.fbc = fbc;
+        const forwardedFor = req.headers["x-forwarded-for"];
 
-        ```javascript
-const metaUrl = `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`;
+        if (forwardedFor) {
+          userData.client_ip_address = String(forwardedFor)
+            .split(",")[0]
+            .trim();
+        } else if (req.socket?.remoteAddress) {
+          userData.client_ip_address = req.socket.remoteAddress;
+        }
 
-const metaResponse = await fetch(metaUrl, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    data: [
-      {
-        event_name: "Lead",
-        event_id: eventId || crypto.randomUUID(),
-        event_time: Math.floor(Date.now() / 1000),
-        action_source: "website",
-        user_data: {
-          em: [hashedEmail],
-          ph: [hashedPhone],
-          ...(fbp ? { fbp } : {}),
-          ...(fbc ? { fbc } : {}),
-          client_ip_address: (
-            req.headers["x-forwarded-for"] || req.socket.remoteAddress || ""
-          ).split(",")[0].trim(),
-          client_user_agent: req.headers["user-agent"] || "",
-        },
-      },
-    ],
-  }),
-});
+        if (fbp) {
+          userData.fbp = fbp;
+        }
 
-const metaResult = await metaResponse.json();
+        if (fbc) {
+          userData.fbc = fbc;
+        }
 
-console.log("Meta CAPI Response:", metaResult);
+        const metaUrl =
+          `https://graph.facebook.com/v23.0/` +
+          `${process.env.META_PIXEL_ID}/events` +
+          `?access_token=${process.env.META_ACCESS_TOKEN}`;
 
-if (!metaResponse.ok) {
-  console.error("Meta API Error:", metaResult);
-}
-```
+        const metaResponse = await fetch(metaUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            data: [
+              {
+                event_name: "Lead",
+                event_id: eventId || crypto.randomUUID(),
+                event_time: Math.floor(Date.now() / 1000),
+                action_source: "website",
+                event_source_url:
+                  req.headers.referer ||
+                  "https://tools-square.in/ai-tools-reselling.html",
+                user_data: userData,
+              },
+            ],
+          }),
+        });
 
         const metaResult = await metaResponse.json();
 
@@ -164,11 +175,11 @@ if (!metaResponse.ok) {
       }
     } else {
       console.warn(
-        "Meta CAPI skipped: META_PIXEL_ID or META_ACCESS_TOKEN is missing."
+        "Meta CAPI skipped because configuration is missing."
       );
     }
 
-    // Registration saved successfully
+    // Return success after Google Sheets save
     return res.status(200).json({
       success: true,
       message: "Lead Saved Successfully",
