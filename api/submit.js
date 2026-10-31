@@ -30,7 +30,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check Google Sheets environment variables
+    // Check Google Sheets configuration
     if (
       !process.env.GOOGLE_SHEET_ID ||
       !process.env.GOOGLE_PROJECT_ID ||
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     // Connect to Google Sheets
     const sheets = await getSheet();
 
-    // Save registration data to Google Sheets
+    // Save registration to Google Sheets
     const sheetResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.GOOGLE_SHEET_ID,
       range: "Sheet1!A:F",
@@ -77,42 +77,60 @@ export default async function handler(req, res) {
       },
     });
 
-    // Log Google Sheets save result
     console.log("Google Sheets Save Success:", {
       updatedRange: sheetResponse.data.updates?.updatedRange,
       updatedRows: sheetResponse.data.updates?.updatedRows,
     });
 
-    // Hash email and phone for Meta Conversions API
-    const hashedEmail = crypto
-      .createHash("sha256")
-      .update(String(email).trim().toLowerCase())
-      .digest("hex");
-
-    const hashedPhone = crypto
-      .createHash("sha256")
-      .update(String(phone).replace(/\D/g, ""))
-      .digest("hex");
-
-    // Send Lead event to Meta Conversions API if configured
-    if (
-      process.env.META_PIXEL_ID &&
-      process.env.META_ACCESS_TOKEN
-    ) {
+    // Send Meta Conversions API event if configured
+    if (process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
       try {
-       ```javascript
-const metaResponse = await fetch(
-  `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      // Keep your existing data object here.
-    }),
-  }
-);
+        const userData = {
+          em: [
+            crypto
+              .createHash("sha256")
+              .update(String(email).trim().toLowerCase())
+              .digest("hex"),
+          ],
+          ph: [
+            crypto
+              .createHash("sha256")
+              .update(String(phone).replace(/\D/g, ""))
+              .digest("hex"),
+          ],
+          client_ip_address: String(
+            req.headers["x-forwarded-for"] ||
+              req.socket?.remoteAddress ||
+              ""
+          ).split(",")[0].trim(),
+          client_user_agent: req.headers["user-agent"] || "",
+        };
+
+        if (fbp) userData.fbp = fbp;
+        if (fbc) userData.fbc = fbc;
+
+        const metaResponse = await fetch(
+          `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              data: [
+                {
+                  event_name: "Lead",
+                  event_id: eventId || crypto.randomUUID(),
+                  event_time: Math.floor(Date.now() / 1000),
+                  action_source: "website",
+                  event_source_url:
+                    req.headers.referer || "https://tools-square.in/ai-tools-reselling.html",
+                  user_data: userData,
+                },
+              ],
+            }),
+          }
+        );
 
         const metaResult = await metaResponse.json();
 
@@ -126,7 +144,6 @@ const metaResponse = await fetch(
           console.error("Meta API Error:", metaResult);
         }
       } catch (metaError) {
-        // Meta errors should not undo a successful Google Sheets save
         console.error("Meta CAPI Error:", metaError.message);
       }
     } else {
@@ -135,7 +152,7 @@ const metaResponse = await fetch(
       );
     }
 
-    // Registration successfully saved to Google Sheets
+    // Registration saved successfully
     return res.status(200).json({
       success: true,
       message: "Lead Saved Successfully",
