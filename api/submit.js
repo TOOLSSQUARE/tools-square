@@ -1,7 +1,9 @@
+```javascript
 import { getSheet } from "../lib/sheets.js";
 import crypto from "crypto";
 
 export default async function handler(req, res) {
+  // Allow POST requests only
   if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
@@ -18,17 +20,27 @@ export default async function handler(req, res) {
       eventId,
       fbp,
       fbc,
+      fbclid,
+      utm_source,
+      utm_campaign,
     } = req.body || {};
 
-    // Validate registration details
-    if (!name || !email || !phone) {
+    // Validate required fields
+    if (
+      typeof name !== "string" ||
+      typeof email !== "string" ||
+      typeof phone !== "string" ||
+      !name.trim() ||
+      !email.trim() ||
+      !phone.trim()
+    ) {
       return res.status(400).json({
         success: false,
         message: "Name, Email and Phone are required.",
       });
     }
 
-    // Check Google Sheets configuration
+    // Validate Google Sheets configuration
     const requiredVariables = [
       "GOOGLE_SHEET_ID",
       "GOOGLE_PROJECT_ID",
@@ -52,33 +64,45 @@ export default async function handler(req, res) {
       });
     }
 
-    // Connect to Google Sheets
+    // Normalize registration data
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPhone = phone.trim();
+    const cleanProfession =
+      typeof profession === "string" ? profession.trim() : "";
+
+    // Get Google Sheets API client
     const sheets = await getSheet();
 
-    // Save registration to Google Sheets
+    // Save data in the correct column order:
+    // A Timestamp, B Name, C Phone, D Email,
+    // E FBCLID, F UTM Source, G UTM Campaign
+    const timestamp = new Date().toLocaleString("en-GB", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+
     const sheetResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: "Sheet1!A:F",
-      valueInputOption: "USER_ENTERED",
+      range: "Sheet1!A:G",
+      valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
         values: [
           [
-            new Date().toLocaleString("en-IN", {
-              timeZone: "Asia/Kolkata",
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: false,
-            }),
-            String(name).trim(),
-            String(email).trim(),
-            String(phone).trim(),
-            profession ? String(profession).trim() : "",
-            "Website",
+            timestamp,
+            cleanName,
+            cleanPhone,
+            cleanEmail,
+            typeof fbclid === "string" ? fbclid : "",
+            typeof utm_source === "string" ? utm_source : "Website",
+            typeof utm_campaign === "string" ? utm_campaign : "",
           ],
         ],
       },
@@ -89,8 +113,8 @@ export default async function handler(req, res) {
       updatedRows: sheetResponse.data.updates?.updatedRows,
     });
 
-    // Send Meta Conversions API event
-    // A Meta error will not undo the successful Sheets save.
+    // Send Meta Conversions API event.
+    // Google Sheets saving is completed before this step.
     if (
       process.env.META_PIXEL_ID &&
       process.env.META_ACCESS_TOKEN
@@ -98,10 +122,11 @@ export default async function handler(req, res) {
       try {
         const hashedEmail = crypto
           .createHash("sha256")
-          .update(String(email).trim().toLowerCase())
+          .update(cleanEmail)
           .digest("hex");
 
-        const normalizedPhone = String(phone).replace(/\D/g, "");
+        // Meta expects a normalized phone number before hashing.
+        const normalizedPhone = cleanPhone.replace(/\D/g, "");
 
         const hashedPhone = crypto
           .createHash("sha256")
@@ -120,37 +145,46 @@ export default async function handler(req, res) {
           userData.client_ip_address = String(forwardedFor)
             .split(",")[0]
             .trim();
-        } else if (req.socket?.remoteAddress) {
-          userData.client_ip_address = req.socket.remoteAddress;
         }
 
-        if (fbp) {
+        if (typeof fbp === "string" && fbp) {
           userData.fbp = fbp;
         }
 
-        if (fbc) {
+        if (typeof fbc === "string" && fbc) {
           userData.fbc = fbc;
         }
 
-        const metaUrl = `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${process.env.META_ACCESS_TOKEN}`;
+        const pixelId = process.env.META_PIXEL_ID;
+        const accessToken = process.env.META_ACCESS_TOKEN;
+
+        const metaUrl =
+          `https://graph.facebook.com/v23.0/${pixelId}/events` +
+          `?access_token=${encodeURIComponent(accessToken)}`;
+
+        const metaPayload = {
+          data: [
+            {
+              event_name: "Lead",
+              event_time: Math.floor(Date.now() / 1000),
+              event_id:
+                typeof eventId === "string" && eventId
+                  ? eventId
+                  : `lead_${Date.now()}_${crypto.randomUUID()}`,
+              action_source: "website",
+              event_source_url:
+                "https://tools-square.in/ai-tools-reselling.html",
+              user_data: userData,
+            },
+          ],
+        };
 
         const metaResponse = await fetch(metaUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            data: [
-              {
-                event_name: "Lead",
-                event_time: Math.floor(Date.now() / 1000),
-                action_source: "website",
-                event_source_url:
-                  "https://tools-square.in/ai-tools-reselling.html",
-                user_data: userData,
-              },
-            ],
-          }),
+          body: JSON.stringify(metaPayload),
         });
 
         const metaResult = await metaResponse.json();
@@ -173,10 +207,10 @@ export default async function handler(req, res) {
       );
     }
 
-    // Return success after Google Sheets save
+    // Report success only after Google Sheets confirms the append.
     return res.status(200).json({
       success: true,
-      message: "Lead Saved Successfully",
+      message: "Registration saved successfully.",
     });
   } catch (error) {
     console.error("Submit API Error:", {
@@ -192,3 +226,4 @@ export default async function handler(req, res) {
     });
   }
 }
+```
