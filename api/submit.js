@@ -73,9 +73,19 @@ export default async function handler(req, res) {
     // Get Google Sheets API client
     const sheets = await getSheet();
 
-    // Save data in the correct column order:
+    // Preserve the existing columns and add Profession in column H.
     // A Timestamp, B Name, C Phone, D Email,
-    // E FBCLID, F UTM Source, G UTM Campaign
+    // E FBCLID, F UTM Source, G UTM Campaign, H Profession.
+    // Keep the H1 header in place so the new data is clearly labelled.
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: "Sheet1!H1",
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [["Profession"]],
+      },
+    });
+
     const timestamp = new Date().toLocaleString("en-GB", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
@@ -89,7 +99,7 @@ export default async function handler(req, res) {
 
     const sheetResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: "Sheet1!A:G",
+      range: "Sheet1!A:H",
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
@@ -102,6 +112,7 @@ export default async function handler(req, res) {
             typeof fbclid === "string" ? fbclid : "",
             typeof utm_source === "string" ? utm_source : "Website",
             typeof utm_campaign === "string" ? utm_campaign : "",
+            cleanProfession,
           ],
         ],
       },
@@ -110,14 +121,12 @@ export default async function handler(req, res) {
     console.log("Google Sheets Save Success:", {
       updatedRange: sheetResponse.data.updates?.updatedRange,
       updatedRows: sheetResponse.data.updates?.updatedRows,
+      professionSaved: Boolean(cleanProfession),
     });
 
     // Send Meta Conversions API event.
-    // Google Sheets saving is completed before this step.
-    if (
-      process.env.META_PIXEL_ID &&
-      process.env.META_ACCESS_TOKEN
-    ) {
+    // A Meta error will not undo the successful Sheets save.
+    if (process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
       try {
         const hashedEmail = crypto
           .createHash("sha256")
@@ -206,7 +215,7 @@ export default async function handler(req, res) {
       );
     }
 
-    // Report success only after Google Sheets confirms the append.
+    // Report success after Google Sheets confirms the append.
     return res.status(200).json({
       success: true,
       message: "Registration saved successfully.",
