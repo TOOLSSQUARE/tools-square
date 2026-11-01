@@ -563,13 +563,11 @@ function getCookie(name) {
   return "";
 }
   const payload = {
-  name: form.name.value.trim(),
-  email: form.email.value.trim(),
-  phone: form.phone.value.trim(),
-  profession: form.profession.value,
-
+  name: form.elements.namedItem("name").value.trim(),
+  email: form.elements.namedItem("email").value.trim(),
+  phone: form.elements.namedItem("phone").value.trim(),
+  profession: form.elements.namedItem("profession").value,
   eventId: eventId,
-
   fbp: getCookie("_fbp"),
   fbc: getCookie("_fbc")
 };
@@ -590,9 +588,11 @@ if (!result.success) {
   return;
 }
 
-fbq("track", "Lead", {}, {
-  eventID: eventId
-});
+if (typeof fbq === "function") {
+  fbq("track", "Lead", {}, {
+    eventID: eventId
+  });
+}
 
 sessionStorage.setItem("ts_name", payload.name);
 
