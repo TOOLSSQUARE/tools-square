@@ -171,6 +171,9 @@ export default async function handler(req, res) {
           `?access_token=${encodeURIComponent(accessToken)}`;
 
         const metaPayload = {
+          ...(process.env.META_TEST_EVENT_CODE
+            ? { test_event_code: process.env.META_TEST_EVENT_CODE }
+            : {}),
           data: [
             {
               event_name: "Lead",
