@@ -130,6 +130,52 @@
   if (!name) { try { name = sessionStorage.getItem('ts_name') || ''; } catch(_){} }
   const first = (name || '').trim().split(' ')[0];
   document.getElementById('tyName').textContent = first ? `You're In, ${first}!` : "You're In!";
+
+  // Meta Pixel for the thank-you funnel. Uses the same Dataset/Pixel ID as server CAPI.
+  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+  n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}
+  (window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init','4550576318557482');
+  fbq('track','PageView');
+
+  function tsCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\  lucide.createIcons();
+</script>') + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+  function tsTrackFunnelEvent(eventName, eventId) {
+    const fbp = tsCookie('_fbp');
+    const fbc = tsCookie('_fbc');
+    if (typeof fbq === 'function') fbq('trackCustom', eventName, {}, { eventID: eventId });
+    const payload = JSON.stringify({ eventName, eventId, fbp, fbc });
+    try {
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'application/json' });
+        if (navigator.sendBeacon('/api/track', blob)) return;
+      }
+    } catch (_) {}
+    fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true
+    }).catch(() => {});
+  }
+
+  // A fresh ID is shared by Browser Pixel and Server CAPI for deduplication.
+  const thankYouEventId = 'ty_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(16).slice(2));
+  tsTrackFunnelEvent('ThankYouPageView', thankYouEventId);
+
+  const whatsappButton = document.querySelector('a[href^="https://chat.whatsapp.com/"]');
+  if (whatsappButton) {
+    whatsappButton.addEventListener('click', function () {
+      const whatsappEventId = 'wa_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(16).slice(2));
+      tsTrackFunnelEvent('WhatsAppCommunityClick', whatsappEventId);
+    });
+  }
+
   lucide.createIcons();
 </script>
 </body>
