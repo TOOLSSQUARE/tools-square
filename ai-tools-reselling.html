@@ -588,16 +588,23 @@ if (!result.success) {
   return;
 }
 
+// Send the browser Lead with the exact same event ID used by the server CAPI.
 if (typeof fbq === "function") {
   fbq("track", "Lead", {}, {
     eventID: eventId
   });
+
+  // Give the browser Pixel request a moment to leave before navigating away.
+  setTimeout(() => {
+    window.location.href =
+      "thankyou.html?name=" + encodeURIComponent(payload.name);
+  }, 800);
+} else {
+  window.location.href =
+    "thankyou.html?name=" + encodeURIComponent(payload.name);
 }
 
 sessionStorage.setItem("ts_name", payload.name);
-
-window.location.href =
-  "thankyou.html?name=" + encodeURIComponent(payload.name);
 
   } catch (err) {
     console.error(err);
