@@ -141,7 +141,45 @@
   fbq('track','PageView');
 
   function tsCookie(name) {
-    const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\  lucide.createIcons();
+    const prefix = name + '=';
+    const parts = document.cookie.split(';');
+    for (const part of parts) {
+      const item = part.trim();
+      if (item.startsWith(prefix)) return decodeURIComponent(item.slice(prefix.length));
+    }
+    return '';
+  }
+  function tsTrackFunnelEvent(eventName, eventId) {
+    const fbp = tsCookie('_fbp');
+    const fbc = tsCookie('_fbc');
+    if (typeof fbq === 'function') fbq('trackCustom', eventName, {}, { eventID: eventId });
+    const payload = JSON.stringify({ eventName, eventId, fbp, fbc });
+    try {
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'application/json' });
+        if (navigator.sendBeacon('/api/track', blob)) return;
+      }
+    } catch (_) {}
+    fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true
+    }).catch(() => {});
+  }
+
+  const thankYouEventId = 'ty_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(16).slice(2));
+  tsTrackFunnelEvent('ThankYouPageView', thankYouEventId);
+
+  const whatsappButton = document.querySelector('a[href^="https://chat.whatsapp.com/"]');
+  if (whatsappButton) {
+    whatsappButton.addEventListener('click', function () {
+      const whatsappEventId = 'wa_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(16).slice(2));
+      tsTrackFunnelEvent('WhatsAppCommunityClick', whatsappEventId);
+    });
+  }
+
+  lucide.createIcons();
 </script>') + '=([^;]*)'));
     return match ? decodeURIComponent(match[1]) : '';
   }
