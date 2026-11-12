@@ -1,5 +1,60 @@
 import { getSheet } from "../lib/sheets.js";
 import crypto from "crypto";
+import { waitUntil } from "@vercel/functions";
+
+
+async function sendMetaLead({
+  cleanEmail, cleanPhone, eventId, fbp, fbc, reqHeaders,
+}) {
+  if (!process.env.META_PIXEL_ID || !process.env.META_ACCESS_TOKEN) {
+    console.warn("Meta CAPI skipped because configuration is missing.");
+    return;
+  }
+
+  try {
+    const hashedEmail = crypto.createHash("sha256").update(cleanEmail).digest("hex");
+    const normalizedPhone = cleanPhone.replace(/\\D/g, "");
+    const hashedPhone = crypto.createHash("sha256").update(normalizedPhone).digest("hex");
+
+    const userData = {
+      em: [hashedEmail],
+      ph: [hashedPhone],
+      client_user_agent: reqHeaders["user-agent"] || "",
+    };
+    const forwardedFor = reqHeaders["x-forwarded-for"];
+    if (forwardedFor) userData.client_ip_address = String(forwardedFor).split(",")[0].trim();
+    if (fbp) userData.fbp = fbp;
+    if (fbc) userData.fbc = fbc;
+
+    const metaUrl = `https://graph.facebook.com/v23.0/${process.env.META_PIXEL_ID}/events?access_token=${encodeURIComponent(process.env.META_ACCESS_TOKEN)}`;
+    const metaPayload = {
+      ...(process.env.META_TEST_EVENT_CODE ? { test_event_code: process.env.META_TEST_EVENT_CODE } : {}),
+      data: [{
+        event_name: "Lead",
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: eventId || `lead_${Date.now()}_${crypto.randomUUID()}`,
+        action_source: "website",
+        event_source_url: "https://tools-square.in/ai-tools-reselling.html",
+        user_data: userData,
+      }],
+    };
+
+    const metaResponse = await fetch(metaUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(metaPayload),
+    });
+    const metaResult = await metaResponse.json();
+    console.log("Meta CAPI Response:", {
+      status: metaResponse.status,
+      events_received: metaResult.events_received,
+      messages: metaResult.messages,
+    });
+    if (!metaResponse.ok) console.error("Meta API Error:", metaResult);
+  } catch (metaError) {
+    console.error("Meta CAPI Error:", metaError.message);
+  }
+}
 
 export default async function handler(req, res) {
   // Allow POST requests only
@@ -73,19 +128,9 @@ export default async function handler(req, res) {
     // Get Google Sheets API client
     const sheets = await getSheet();
 
-    // Preserve the existing columns and add Profession in column H.
-    // A Timestamp, B Name, C Phone, D Email,
-    // E FBCLID, F UTM Source, G UTM Campaign, H Profession.
-    // Keep the H1 header in place so the new data is clearly labelled.
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: "Sheet1!H1",
-      valueInputOption: "RAW",
-      requestBody: {
-        values: [["Profession"]],
-      },
-    });
-
+    // The Profession header is provisioned in the sheet already.
+    // Avoid an extra Google Sheets write on every registration.
+    
     const timestamp = new Date().toLocaleString("en-GB", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
@@ -124,99 +169,16 @@ export default async function handler(req, res) {
       professionSaved: Boolean(cleanProfession),
     });
 
-    // Send Meta Conversions API event.
-    // A Meta error will not undo the successful Sheets save.
-    if (process.env.META_PIXEL_ID && process.env.META_ACCESS_TOKEN) {
-      try {
-        const hashedEmail = crypto
-          .createHash("sha256")
-          .update(cleanEmail)
-          .digest("hex");
-
-        // Meta expects a normalized phone number before hashing.
-        const normalizedPhone = cleanPhone.replace(/\D/g, "");
-
-        const hashedPhone = crypto
-          .createHash("sha256")
-          .update(normalizedPhone)
-          .digest("hex");
-
-        const userData = {
-          em: [hashedEmail],
-          ph: [hashedPhone],
-          client_user_agent: req.headers["user-agent"] || "",
-        };
-
-        const forwardedFor = req.headers["x-forwarded-for"];
-
-        if (forwardedFor) {
-          userData.client_ip_address = String(forwardedFor)
-            .split(",")[0]
-            .trim();
-        }
-
-        if (typeof fbp === "string" && fbp) {
-          userData.fbp = fbp;
-        }
-
-        if (typeof fbc === "string" && fbc) {
-          userData.fbc = fbc;
-        }
-
-        const pixelId = process.env.META_PIXEL_ID;
-        const accessToken = process.env.META_ACCESS_TOKEN;
-
-        const metaUrl =
-          `https://graph.facebook.com/v23.0/${pixelId}/events` +
-          `?access_token=${encodeURIComponent(accessToken)}`;
-
-        const metaPayload = {
-          ...(process.env.META_TEST_EVENT_CODE
-            ? { test_event_code: process.env.META_TEST_EVENT_CODE }
-            : {}),
-          data: [
-            {
-              event_name: "Lead",
-              event_time: Math.floor(Date.now() / 1000),
-              event_id:
-                typeof eventId === "string" && eventId
-                  ? eventId
-                  : `lead_${Date.now()}_${crypto.randomUUID()}`,
-              action_source: "website",
-              event_source_url:
-                "https://tools-square.in/ai-tools-reselling.html",
-              user_data: userData,
-            },
-          ],
-        };
-
-        const metaResponse = await fetch(metaUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(metaPayload),
-        });
-
-        const metaResult = await metaResponse.json();
-
-        console.log("Meta CAPI Response:", {
-          status: metaResponse.status,
-          events_received: metaResult.events_received,
-          messages: metaResult.messages,
-        });
-
-        if (!metaResponse.ok) {
-          console.error("Meta API Error:", metaResult);
-        }
-      } catch (metaError) {
-        console.error("Meta CAPI Error:", metaError.message);
-      }
-    } else {
-      console.warn(
-        "Meta CAPI skipped because configuration is missing."
-      );
-    }
+    // Keep the Google Sheets save in the critical path, but let Vercel
+    // continue the Meta CAPI request after the HTTP response is sent.
+    waitUntil(sendMetaLead({
+      cleanEmail,
+      cleanPhone,
+      eventId,
+      fbp,
+      fbc,
+      reqHeaders: req.headers,
+    }));
 
     // Report success after Google Sheets confirms the append.
     return res.status(200).json({
