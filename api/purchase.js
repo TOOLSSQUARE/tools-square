@@ -79,10 +79,19 @@ export default async function handler(req, res) {
       `https://graph.facebook.com/v23.0/${encodeURIComponent(pixelId)}/events` +
       `?access_token=${encodeURIComponent(accessToken)}`;
 
+    // Optional temporary Meta Test Events mode.
+    // Set PURCHASE_TEST_EVENT_CODE only while testing, then remove it for live sales.
+    const payload = {
+      ...(process.env.PURCHASE_TEST_EVENT_CODE
+        ? { test_event_code: process.env.PURCHASE_TEST_EVENT_CODE }
+        : {}),
+      data: [event],
+    };
+
     const metaResponse = await fetch(metaUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [event] }),
+      body: JSON.stringify(payload),
     });
 
     const metaResult = await metaResponse.json();
