@@ -13,7 +13,7 @@ async function sendMetaLead({
 
   try {
     const hashedEmail = crypto.createHash("sha256").update(cleanEmail).digest("hex");
-    const normalizedPhone = cleanPhone.replace(/\\D/g, "");
+    const normalizedPhone = cleanPhone.replace(/\D/g, "");
     const hashedPhone = crypto.createHash("sha256").update(normalizedPhone).digest("hex");
 
     const userData = {
